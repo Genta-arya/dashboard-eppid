@@ -147,7 +147,7 @@ const Navbar = () => {
   };
 
   return (
-    <div className="w-full px-4 pt-4 pb-2 border-b-2 bg-white sticky top-0 z-0">
+    <div className="w-full px-4 pt-4 pb-2 border-b-2 bg-white sticky top-0 z-50">
       <div className="flex items-center justify-between">
         {/* Logo & Title */}
         <div className="flex items-center gap-4">

@@ -19,6 +19,8 @@ import {
   SearchForm,
   updateStatus,
 } from "@/Services/Auth/Form.services";
+import { baseUrl } from "@/Services/AxiosInstance";
+import useSession from "@/hooks/use-session";
 
 const mapEnum = {
   JenisPemohon: {
@@ -65,6 +67,7 @@ const PermohonanKeberatan = () => {
     currentPage: 1,
     totalPages: 1,
   });
+  const { user} = useSession();
   const fetchData = async (page = 1) => {
     setIsLoading(true);
     try {
@@ -113,14 +116,56 @@ const PermohonanKeberatan = () => {
   };
 
   const handleStatusChange = async (id, newStatus) => {
+    let adminNote = "";
+
+    // 1. Cek jika status yang baru adalah SELESAI atau DITOLAK
+    if (newStatus === "SELESAI" || newStatus === "DITOLAK") {
+      const userInput = prompt(
+        `Berikan catatan tindak lanjut untuk status ${mapEnum.StatusTicket[newStatus].label}:`,
+      );
+
+      // Jika user menekan 'Cancel' atau input kosong
+      if (userInput === null) {
+        // Kembalikan dropdown ke status sebelumnya (opsional, tergantung kebutuhan UX)
+        return;
+      }
+
+      if (userInput.trim() === "") {
+        toast.error("Catatan wajib diisi untuk status ini.");
+        return;
+      }
+
+      adminNote = userInput;
+    }
+    if (adminNote.length > 100) {
+      toast.info("Catatan tidak boleh lebih dari 100 karakter.");
+      return;
+    }
+
     try {
       setIsUpdating((prev) => ({ ...prev, [id]: true }));
-      await updateStatus(id, { status: newStatus });
 
-      // Update Local State
+      // 2. Kirim status DAN catatan ke API
+      // Pastikan backend Anda sudah mendukung field catatanAdmin atau sesuai nama field di DB
+      await updateStatus(
+        id,
+        { status: newStatus },
+        adminNote || null,
+        true,
+        user.id,
+        user.name,
+      );
+
+      // 3. Update Local State (Termasuk update catatanAdmin agar UI langsung berubah)
       setData((prev) =>
         prev.map((item) =>
-          item.id === id ? { ...item, status: newStatus } : item,
+          item.id === id
+            ? {
+                ...item,
+                status: newStatus,
+                catatanAdmin: adminNote || item.catatanAdmin,
+              }
+            : item,
         ),
       );
 
@@ -134,11 +179,47 @@ const PermohonanKeberatan = () => {
       setIsUpdating((prev) => ({ ...prev, [id]: false }));
     }
   };
-  const handleAddNote = (id) => {
-    const note = prompt("Masukkan catatan tindak lanjut admin:");
-    if (note) {
-      toast.success("Catatan berhasil ditambahkan.");
-      // Simpan logika API Update Catatan di sini
+  const handleEditNote = async (item) => {
+    // 1. Ambil catatan saat ini sebagai default value di prompt
+    const currentNote = item.catatanAdmin || "";
+
+    if (item.status !== "SELESAI" && item.status !== "DITOLAK") {
+      return toast.info(
+        "Hanya status SELESAI dan DITOLAK yang dapat diubah catatan.",
+      );
+    }
+    const newNote = prompt("Edit Catatan Tindak Lanjut Admin:", currentNote);
+
+    // Jika user klik 'Batal' (null), jangan lakukan apa-apa
+    if (newNote === null) return;
+
+    // Validasi panjang karakter (opsional, mengikuti logic status change Anda)
+    if (newNote.length > 100) {
+      toast.info("Catatan tidak boleh lebih dari 100 karakter.");
+      return;
+    }
+
+    try {
+      setIsUpdating((prev) => ({ ...prev, [item.id]: true }));
+
+      // 2. Panggil API updateStatus
+      // Kirim status yang sekarang (item.status) agar status tidak berubah
+      // Kirim newNote sebagai catatan baru
+      await updateStatus(item.id, { status: item.status }, newNote);
+
+      // 3. Update Local State agar UI langsung berubah
+      setData((prev) =>
+        prev.map((row) =>
+          row.id === item.id ? { ...row, catatanAdmin: newNote } : row,
+        ),
+      );
+
+      toast.success("Catatan berhasil diperbarui.");
+    } catch (error) {
+      console.error(error);
+      toast.error("Gagal memperbarui catatan.");
+    } finally {
+      setIsUpdating((prev) => ({ ...prev, [item.id]: false }));
     }
   };
 
@@ -455,16 +536,21 @@ const PermohonanKeberatan = () => {
                           <td className="p-5 align-top">
                             <div className="flex flex-col gap-2">
                               <button
-                                onClick={() => handleAddNote(item.id)}
-                                className="flex items-center justify-center gap-2 px-4 py-2.5 bg-amber-50 text-amber-600 border-2 border-amber-100 rounded-xl hover:bg-amber-600 hover:text-white hover:border-amber-600 transition-all shadow-sm font-bold text-[10px]"
+                                disabled={isUpdating[item.id]} // Nonaktifkan saat sedang loading
+                                onClick={() => handleEditNote(item)} // Kirim seluruh objek 'item'
+                                className={`flex items-center justify-center gap-2 px-4 py-2.5 bg-amber-50 text-amber-600 border-2 border-amber-100 rounded-xl hover:bg-amber-600 hover:text-white hover:border-amber-600 transition-all shadow-sm font-bold text-[10px] ${
+                                  isUpdating[item.id]
+                                    ? "opacity-50 cursor-wait"
+                                    : ""
+                                }`}
                               >
-                                <FaStickyNote /> CATATAN
+                                <FaStickyNote /> Edit Catatan
                               </button>
                               <button
                                 onClick={() => handleDelete(item.id)}
                                 className="flex items-center justify-center gap-2 px-4 py-2.5 bg-red-50 text-red-600 border-2 border-red-100 rounded-xl hover:bg-red-600 hover:text-white hover:border-red-600 transition-all shadow-sm font-bold text-[10px]"
                               >
-                                <FaTrash /> HAPUS
+                                <FaTrash /> Hapus
                               </button>
                             </div>
                           </td>

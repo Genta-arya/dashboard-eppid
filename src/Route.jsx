@@ -14,7 +14,6 @@ import Setting from "./Views/Setting/Setting";
 import PermohonanInformasi from "./Views/Management/PermohonanInformasi";
 import PermohonanKeberatan from "./Views/Management/PermohonanKeberatan";
 
-
 const RouteApp = () => {
   return (
     <Router>
@@ -24,8 +23,14 @@ const RouteApp = () => {
         <Route element={<Layout />}>
           <Route path="/" element={<Dashboard />} />
           <Route path="/Pengaduan" element={<Management />} />
-          <Route path="/pengaduan/permohonan-informasi" element={<PermohonanInformasi />} />
-          <Route path="pengaduan/pengajuan-keberatan" element={<PermohonanKeberatan/>} />
+          <Route
+            path="/pengaduan/permohonan-informasi"
+            element={<PermohonanInformasi />}
+          />
+          <Route
+            path="pengaduan/pengajuan-keberatan"
+            element={<PermohonanKeberatan />}
+          />
 
           <Route path="/setting" element={<Setting />} />
         </Route>
