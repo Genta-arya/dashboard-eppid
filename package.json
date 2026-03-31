@@ -29,6 +29,8 @@
     "dompurify": "^3.2.4",
     "exceljs": "^4.4.0",
     "file-saver": "^2.0.5",
+    "jspdf": "^4.2.1",
+    "jspdf-autotable": "^5.0.7",
     "leaflet": "1.9",
     "lucide-react": "^0.483.0",
     "luxon": "^3.7.1",

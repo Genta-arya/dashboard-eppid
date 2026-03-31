@@ -10,6 +10,8 @@ import {
   FaStickyNote,
   FaPaperPlane,
   FaHistory,
+  FaFileExcel,
+  FaFilePdf,
 } from "react-icons/fa";
 import { toast } from "sonner";
 import Navigation from "@/components/Navigation";
@@ -22,6 +24,9 @@ import {
 import { CircleArrowLeft, CircleArrowRight } from "lucide-react";
 import { baseUrl } from "@/Services/AxiosInstance";
 import useSession from "@/hooks/use-session";
+import * as XLSX from "xlsx";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 
 const mapEnum = {
   JenisPemohon: {
@@ -68,9 +73,12 @@ const PermohonanInformasi = () => {
     currentPage: 1,
     totalPages: 1,
   });
-  const { user} = useSession();
-
-
+  const { user } = useSession();
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedItem, setSelectedItem] = useState(null);
+  const [uploadFile, setUploadFile] = useState(null);
+  const [adminNote, setAdminNote] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const fetchData = async (page = 1) => {
     setIsLoading(true);
     try {
@@ -79,6 +87,7 @@ const PermohonanInformasi = () => {
         statusFilter,
         dateFilter,
         page,
+        10,
       );
       window.scrollTo({ top: 0, behavior: "smooth" });
       setData(response.data.data || []); // Ambil data dari properti data
@@ -119,57 +128,49 @@ const PermohonanInformasi = () => {
   };
 
   const handleStatusChange = async (id, newStatus) => {
-    let adminNote = "";
+    const item = data.find((d) => d.id === id);
 
-    // 1. Cek jika status yang baru adalah SELESAI atau DITOLAK
-    if (newStatus === "SELESAI" || newStatus === "DITOLAK") {
-      const userInput = prompt(
-        `Berikan catatan tindak lanjut untuk status ${mapEnum.StatusTicket[newStatus].label}:`,
-      );
-
-      // Jika user menekan 'Cancel' atau input kosong
-      if (userInput === null) {
-        // Kembalikan dropdown ke status sebelumnya (opsional, tergantung kebutuhan UX)
-        return;
-      }
-
-      if (userInput.trim() === "") {
-        toast.error("Catatan wajib diisi untuk status ini.");
-        return;
-      }
-
-      adminNote = userInput;
-    }
-    if (adminNote.length > 100) {
-      toast.info("Catatan tidak boleh lebih dari 100 karakter.");
+    if (newStatus === "SELESAI") {
+      setSelectedItem(item); // Simpan seluruh object item
+      setAdminNote("");
+      setUploadFile(null);
+      setIsModalOpen(true);
       return;
+    }
+
+    let note = "";
+    if (newStatus === "DITOLAK") {
+      const userInput = prompt("Berikan alasan penolakan:");
+      if (!userInput) return;
+      note = userInput;
     }
 
     try {
       setIsUpdating((prev) => ({ ...prev, [id]: true }));
+      await updateStatus(
+        id,
+        { status: newStatus },
+        note || null,
+        true,
+        user.id,
+        user.name,
+      );
 
-      // 2. Kirim status DAN catatan ke API
-      // Pastikan backend Anda sudah mendukung field catatanAdmin atau sesuai nama field di DB
-      await updateStatus(id, { status: newStatus }, adminNote || null, true , user.id , user.name);
-
-      // 3. Update Local State (Termasuk update catatanAdmin agar UI langsung berubah)
+      // Update data lokal agar tidak perlu refresh full page
       setData((prev) =>
-        prev.map((item) =>
-          item.id === id
+        prev.map((it) =>
+          it.id === id
             ? {
-                ...item,
+                ...it,
                 status: newStatus,
-                catatanAdmin: adminNote || item.catatanAdmin,
+                catatanAdmin: note || it.catatanAdmin,
               }
-            : item,
+            : it,
         ),
       );
-
-      toast.success(
-        `Status diperbarui ke: ${mapEnum.StatusTicket[newStatus].label}`,
-      );
+      toast.success("Status diperbarui.");
+      fetchData(pagination.currentPage); // Refresh data untuk memastikan konsistensi
     } catch (error) {
-      console.error(error);
       toast.error("Gagal memperbarui status.");
     } finally {
       setIsUpdating((prev) => ({ ...prev, [id]: false }));
@@ -254,6 +255,195 @@ const PermohonanInformasi = () => {
     return `https://wa.me/${cleaned}`;
   };
 
+  const handleSubmitSelesai = async () => {
+    if (!adminNote || !uploadFile) {
+      return toast.error("Catatan dan File Bukti wajib diisi!");
+    }
+
+    setIsSubmitting(true);
+    const loadingToast = toast.loading("Mengunggah bukti ke Google Drive...");
+
+    const reader = new FileReader();
+    reader.readAsDataURL(uploadFile);
+
+    reader.onload = async () => {
+      const base64File = reader.result;
+
+      try {
+        // 1. Kirim ke Google Apps Script
+        const driveResp = await fetch(
+          "https://script.google.com/macros/s/AKfycby9fovQ5wQl5bzNQucxSGRaZ12yVzdrazGPGN5qL3MZyhfjKceD5wXGsRsp_WwUBuqL/exec",
+          {
+            method: "POST",
+            body: JSON.stringify({
+              file: base64File,
+              fileName: uploadFile.name,
+              ticketNumber: selectedItem.ticketNumber,
+            }),
+          },
+        );
+
+        const driveResult = await driveResp.json();
+        if (driveResult.status !== "success")
+          throw new Error(driveResult.message);
+
+        toast.loading("Drive Berhasil! Menyimpan ke Database...", {
+          id: loadingToast,
+        });
+
+        // 2. Kirim ke Backend Database Utama
+        await updateStatus(
+          selectedItem.id,
+          {
+            status: "SELESAI",
+            dokumenUrl: driveResult.fileUrl,
+            dokumenName: driveResult.fileName,
+          },
+          adminNote,
+          true,
+          user.id,
+          user.name,
+        );
+
+        toast.success("Permohonan berhasil diselesaikan!", {
+          id: loadingToast,
+        });
+        setIsModalOpen(false);
+        fetchData(pagination.currentPage); // Refresh data
+      } catch (error) {
+        console.error(error);
+        toast.error("Gagal menyelesaikan: " + error.message, {
+          id: loadingToast,
+        });
+      } finally {
+        setIsSubmitting(false);
+      }
+    };
+  };
+
+ const exportToExcel = async () => {
+    const loadingToast = toast.loading("Menyiapkan data Excel...");
+    try {
+      const response = await getAllForm("PERMINTAAN_INFORMASI", statusFilter, dateFilter, 1, "all");
+      const allData = response.data.data || [];
+      const formattedData = allData.map((item) => ({
+        "Nomor Tiket": item.ticketNumber,
+        Tanggal: new Date(item.createdAt).toLocaleDateString("id-ID"),
+        Pemohon: item.nama,
+        Status: mapEnum.StatusTicket[item.status]?.label || item.status,
+        Informasi: item.rincianInformasi,
+        Catatan: item.catatanAdmin || "-",
+      }));
+      const ws = XLSX.utils.json_to_sheet(formattedData);
+      const wb = { Sheets: { Data: ws }, SheetNames: ["Data"] };
+      XLSX.writeFile(wb, `Laporan_PPID_${new Date().getTime()}.xlsx`);
+      toast.success("Excel diunduh", { id: loadingToast });
+    } catch (e) { toast.error("Gagal export Excel", { id: loadingToast }); }
+  };
+
+ const exportToPDF = async () => {
+  const loadingToast = toast.loading("Menyiapkan PDF Full Width...");
+  try {
+    const response = await getAllForm("PERMINTAAN_INFORMASI", statusFilter, dateFilter, 1, "all");
+    const allData = response.data.data || [];
+    const doc = new jsPDF("l", "mm", "a4");
+    const pageWidth = doc.internal.pageSize.getWidth();
+
+    // Judul Center
+    doc.setFontSize(18);
+    doc.setTextColor(144, 13, 13);
+    doc.text("LAPORAN PERMOHONAN INFORMASI PPID", pageWidth / 2, 20, { align: "center" });
+    doc.setFontSize(10);
+    doc.setTextColor(100);
+    doc.text(`Dicetak pada: ${new Date().toLocaleString("id-ID")}`, pageWidth / 2, 28, { align: "center" });
+
+    // Header dengan Kolom NO
+    const tableColumn = ["No.", "No. Tiket", "Pemohon", "Rincian Informasi", "Status", "Tanggal", "Lamp.", "Bukti", "Catatan"];
+
+    // Mapping Row dengan Index (i + 1)
+    const tableRows = allData.map((item, i) => [
+      i + 1, // Kolom Nomor
+      item.ticketNumber,
+      item.nama,
+      item.rincianInformasi || "-",
+      mapEnum.StatusTicket[item.status]?.label || "Belum",
+      new Date(item.createdAt).toLocaleDateString("id-ID"),
+      item.dokumenUrl ? "UNDUH" : "-",
+      item.buktiTerima ? "LIHAT" : "-",
+      item.catatanAdmin || "-",
+    ]);
+
+    autoTable(doc, {
+      head: [tableColumn],
+      body: tableRows,
+      startY: 35,
+      theme: "grid",
+      
+      // AGAR FULL WIDTH:
+      tableWidth: 'auto', // Ini akan membuat tabel memenuhi lebar halaman (dikurangi margin)
+      margin: { left: 10, right: 10 }, // Margin tipis kiri kanan agar maksimal
+      
+      styles: { 
+        fontSize: 7, 
+        cellPadding: 2, 
+        overflow: 'linebreak',
+        valign: 'middle' 
+      },
+      headStyles: { 
+        fillColor: [144, 13, 13], 
+        halign: "center",
+        fontSize: 8
+      },
+      // Penyesuaian persentase lebar (agar kolom rincian tetap yang paling luas)
+      columnStyles: {
+        0: { cellWidth: 10, halign: 'center' }, // No
+        1: { cellWidth: 35, halign: 'center' }, // No Tiket
+        2: { cellWidth: 35 },                   // Pemohon
+        3: { cellWidth: 'auto' },               // Rincian (Otomatis sisanya)
+        4: { cellWidth: 20, halign: 'center' }, // Status
+        5: { cellWidth: 22, halign: 'center' }, // Tanggal
+        6: { cellWidth: 15, halign: 'center' }, // Lamp
+        7: { cellWidth: 15, halign: 'center' }, // Bukti
+        8: { cellWidth: 40 },                   // Catatan
+      },
+      didParseCell: (dataCell) => {
+        if (dataCell.section === 'body') {
+          const s = allData[dataCell.row.index]?.status;
+          if (s === "SELESAI") dataCell.cell.styles.fillColor = [220, 252, 231];
+          else if (s === "DITOLAK") dataCell.cell.styles.fillColor = [254, 226, 226];
+          else if (s === "DIPROSES") dataCell.cell.styles.fillColor = [254, 249, 195];
+          else dataCell.cell.styles.fillColor = [243, 244, 246];
+        }
+      },
+      didDrawCell: (dataCell) => {
+        if (dataCell.section === 'body') {
+          const item = allData[dataCell.row.index];
+          // Update index karena ada penambahan kolom No (Lampiran jadi index 6, Bukti jadi 7)
+          if ((dataCell.column.index === 6 && item.dokumenUrl) || (dataCell.column.index === 7 && item.buktiTerima)) {
+            doc.setTextColor(0, 0, 255);
+            doc.link(dataCell.cell.x, dataCell.cell.y, dataCell.cell.width, dataCell.cell.height, {
+              url: dataCell.column.index === 6 ? `${baseUrl}/form/file/download?id=${item.ticketNumber}` : item.buktiTerima
+            });
+          }
+        }
+      }
+    });
+
+    doc.save(`Laporan_PPID_Lengkap_${new Date().getTime()}.pdf`);
+    toast.success("PDF Full Width Berhasil!", { id: loadingToast });
+  } catch (e) {
+    console.error(e);
+    toast.error("Gagal cetak PDF", { id: loadingToast });
+  }
+};
+
+  const getRowBg = (status) => {
+    if (status === "SELESAI") return "bg-green-100 hover:bg-green-200";
+    if (status === "DITOLAK") return "bg-red-100 hover:bg-red-200";
+    if (status === "DIPROSES") return "bg-yellow-100 hover:bg-yellow-200";
+    return "bg-gray-100 hover:bg-gray-200";
+  };
+
   return (
     <>
       <div className=" ">
@@ -270,6 +460,21 @@ const PermohonanInformasi = () => {
               <div className="flex items-center gap-2 text-red-100 text-sm mt-1 font-medium italic opacity-90">
                 <FaHistory />
                 <span>Monitoring & Manajemen Berkas PPID</span>
+              </div>
+              <div className="flex items-center gap-4 mt-4">
+                {/* TOMBOL EXPORT BARU */}
+                <button
+                  onClick={exportToExcel}
+                  className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-xs font-bold transition-all shadow-lg"
+                >
+                  <FaFileExcel size={14} /> EXCEL
+                </button>
+                <button
+                  onClick={exportToPDF}
+                  className="flex items-center gap-2 bg-white hover:bg-gray-100 text-red-700 px-4 py-2 rounded-lg text-xs font-bold transition-all shadow-lg"
+                >
+                  <FaFilePdf size={14} /> PDF
+                </button>
               </div>
             </div>
 
@@ -360,7 +565,8 @@ const PermohonanInformasi = () => {
                   <th className="p-5 text-center">Detail Pemohon</th>
 
                   <th className="p-5 text-center">Permintaan Informasi</th>
-                  <th className="p-5 text-center uppercase">Berkas</th>
+                  <th className="p-5 text-center uppercase">Berkas Lampiran</th>
+                  <th className="p-5 text-center uppercase">Bukti Terima</th>
                   <th className="p-5 text-center">Update Status</th>
                   <th className="p-5 text-center">Tindakan</th>
                 </tr>
@@ -468,31 +674,65 @@ const PermohonanInformasi = () => {
                             </div>
                           </td>
 
-                          {/* Lampiran */}
                           <td className="p-5 align-top text-center">
                             {item.dokumenUrl ? (
                               <a
                                 href={`${baseUrl}/form/file/download?id=${item.ticketNumber}`}
                                 target="_self"
-                                className="flex flex-col items-center gap-2 group"
+                                className="group flex flex-col items-center gap-1"
                               >
                                 <div className="p-3 bg-red-600 text-white rounded-xl shadow-lg group-hover:bg-red-700 transition-all group-active:scale-90">
-                                  <FaFileDownload size={16} />
+                                  <FaFileDownload size={14} />
                                 </div>
-                                <span className="text-[9px] font-black text-red-600 mt-1">
-                                  UNDUH
+                                <span className="text-[9px] font-black text-red-600 uppercase">
+                                  Unduh
                                 </span>
                               </a>
                             ) : (
-                              <div className="flex flex-col items-center opacity-20">
-                                <FaFileDownload size={16} />
-                                <span className="text-[9px] font-black mt-1 uppercase">
-                                  Tidak ada lampiran
-                                </span>
-                              </div>
+                              <span className="text-[9px] font-bold text-gray-300 italic uppercase">
+                                Tidak Ada
+                              </span>
                             )}
                           </td>
 
+                          {/* Kolom Bukti Tanda Terima Admin */}
+                          <td className="p-5 align-top text-center">
+                            <div className="flex flex-col items-center gap-2">
+                              {item.buktiTerima ? (
+                                <a
+                                  href={item.buktiTerima}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="group flex flex-col items-center gap-1"
+                                >
+                                  <div className="p-3 bg-blue-600 text-white rounded-xl shadow-lg group-hover:bg-blue-700 transition-all">
+                                    <FaFileDownload size={14} />
+                                  </div>
+                                  <span className="text-[9px] font-black text-blue-600 uppercase">
+                                    Lihat Bukti
+                                  </span>
+                                </a>
+                              ) : (
+                                <span className="text-[9px] font-bold text-gray-300 italic uppercase">
+                                  Belum Upload
+                                </span>
+                              )}
+
+                              {/* Tombol Edit Bukti (Hanya muncul jika status sudah SELESAI) */}
+                              {item.status === "SELESAI" && (
+                                <button
+                                  onClick={() => {
+                                    setSelectedItem(item);
+                                    setAdminNote(item.catatanAdmin || "");
+                                    setIsModalOpen(true);
+                                  }}
+                                  className="text-[8px] font-black bg-blue-50 text-blue-600 px-2 py-1 rounded border border-blue-200 hover:bg-blue-600 hover:text-white transition-all"
+                                >
+                                  EDIT
+                                </button>
+                              )}
+                            </div>
+                          </td>
                           {/* Status Update (Select) */}
                           <td className="p-5 align-top">
                             <div className="flex flex-col gap-3">
@@ -667,6 +907,61 @@ const PermohonanInformasi = () => {
           )}
         </div>
       </div>
+
+      {isModalOpen && (
+        <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden transition-all animate-in zoom-in duration-200">
+            <div className="bg-red-600 p-5 text-white">
+              <h3 className="font-black uppercase tracking-tight text-lg">
+                Penyelesaian Berkas
+              </h3>
+              <p className="text-xs opacity-80 uppercase font-bold tracking-widest mt-1">
+                Tiket: {selectedItem?.ticketNumber}
+              </p>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-[10px] font-black uppercase text-gray-400 mb-1">
+                  Catatan Tindak Lanjut
+                </label>
+                <textarea
+                  className="w-full border-2 border-gray-100 rounded-xl p-3 text-sm focus:border-red-500 outline-none"
+                  rows="3"
+                  placeholder="Contoh: Dokumen telah diserahkan via WhatsApp..."
+                  value={adminNote}
+                  onChange={(e) => setAdminNote(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-black uppercase text-gray-400 mb-1">
+                  Upload Bukti (PDF/JPG)
+                </label>
+                <input
+                  type="file"
+                  onChange={(e) => setUploadFile(e.target.files[0])}
+                  className="w-full text-xs border-2 border-dashed border-gray-100 p-3 rounded-xl cursor-pointer"
+                />
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={() => setIsModalOpen(false)}
+                  disabled={isSubmitting}
+                  className="flex-1 py-3 text-xs font-black text-gray-400 hover:bg-gray-50 rounded-xl transition-all"
+                >
+                  BATAL
+                </button>
+                <button
+                  onClick={handleSubmitSelesai}
+                  disabled={isSubmitting || !adminNote || !uploadFile}
+                  className={` flex-1 py-3 text-xs font-black rounded-xl shadow-lg transition-all ${isSubmitting || !adminNote || !uploadFile ? "bg-gray-400 " : "bg-red-600 text-white hover:bg-red-700 shadow-red-100 active:scale-95"}`}
+                >
+                  {isSubmitting ? "MENGUNGGAH..." : "SIMPAN & SELESAI"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 };

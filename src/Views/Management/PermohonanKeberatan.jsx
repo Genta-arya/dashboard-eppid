@@ -19,6 +19,7 @@ import {
   SearchForm,
   updateStatus,
 } from "@/Services/Auth/Form.services";
+import { CircleArrowLeft, CircleArrowRight } from "lucide-react";
 import { baseUrl } from "@/Services/AxiosInstance";
 import useSession from "@/hooks/use-session";
 
@@ -67,15 +68,21 @@ const PermohonanKeberatan = () => {
     currentPage: 1,
     totalPages: 1,
   });
-  const { user} = useSession();
+  const { user } = useSession();
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedItem, setSelectedItem] = useState(null);
+  const [uploadFile, setUploadFile] = useState(null);
+  const [adminNote, setAdminNote] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const fetchData = async (page = 1) => {
     setIsLoading(true);
     try {
       const response = await getAllForm(
-        "KEBERATAN",
+       "KEBERATAN",
         statusFilter,
         dateFilter,
         page,
+        10
       );
       window.scrollTo({ top: 0, behavior: "smooth" });
       setData(response.data.data || []); // Ambil data dari properti data
@@ -116,64 +123,49 @@ const PermohonanKeberatan = () => {
   };
 
   const handleStatusChange = async (id, newStatus) => {
-    let adminNote = "";
+    const item = data.find((d) => d.id === id);
 
-    // 1. Cek jika status yang baru adalah SELESAI atau DITOLAK
-    if (newStatus === "SELESAI" || newStatus === "DITOLAK") {
-      const userInput = prompt(
-        `Berikan catatan tindak lanjut untuk status ${mapEnum.StatusTicket[newStatus].label}:`,
-      );
-
-      // Jika user menekan 'Cancel' atau input kosong
-      if (userInput === null) {
-        // Kembalikan dropdown ke status sebelumnya (opsional, tergantung kebutuhan UX)
-        return;
-      }
-
-      if (userInput.trim() === "") {
-        toast.error("Catatan wajib diisi untuk status ini.");
-        return;
-      }
-
-      adminNote = userInput;
-    }
-    if (adminNote.length > 100) {
-      toast.info("Catatan tidak boleh lebih dari 100 karakter.");
+    if (newStatus === "SELESAI") {
+      setSelectedItem(item); // Simpan seluruh object item
+      setAdminNote("");
+      setUploadFile(null);
+      setIsModalOpen(true);
       return;
+    }
+
+    let note = "";
+    if (newStatus === "DITOLAK") {
+      const userInput = prompt("Berikan alasan penolakan:");
+      if (!userInput) return;
+      note = userInput;
     }
 
     try {
       setIsUpdating((prev) => ({ ...prev, [id]: true }));
-
-      // 2. Kirim status DAN catatan ke API
-      // Pastikan backend Anda sudah mendukung field catatanAdmin atau sesuai nama field di DB
       await updateStatus(
         id,
         { status: newStatus },
-        adminNote || null,
+        note || null,
         true,
         user.id,
         user.name,
       );
 
-      // 3. Update Local State (Termasuk update catatanAdmin agar UI langsung berubah)
+      // Update data lokal agar tidak perlu refresh full page
       setData((prev) =>
-        prev.map((item) =>
-          item.id === id
+        prev.map((it) =>
+          it.id === id
             ? {
-                ...item,
+                ...it,
                 status: newStatus,
-                catatanAdmin: adminNote || item.catatanAdmin,
+                catatanAdmin: note || it.catatanAdmin,
               }
-            : item,
+            : it,
         ),
       );
-
-      toast.success(
-        `Status diperbarui ke: ${mapEnum.StatusTicket[newStatus].label}`,
-      );
+      toast.success("Status diperbarui.");
+      fetchData(pagination.currentPage); // Refresh data untuk memastikan konsistensi
     } catch (error) {
-      console.error(error);
       toast.error("Gagal memperbarui status.");
     } finally {
       setIsUpdating((prev) => ({ ...prev, [id]: false }));
@@ -182,7 +174,6 @@ const PermohonanKeberatan = () => {
   const handleEditNote = async (item) => {
     // 1. Ambil catatan saat ini sebagai default value di prompt
     const currentNote = item.catatanAdmin || "";
-
     if (item.status !== "SELESAI" && item.status !== "DITOLAK") {
       return toast.info(
         "Hanya status SELESAI dan DITOLAK yang dapat diubah catatan.",
@@ -223,21 +214,35 @@ const PermohonanKeberatan = () => {
     }
   };
 
-  const handleDelete = async (id) => {
-    setIsLoading(true);
-    try {
-      await deleteForm(id);
-      toast.success("Data berhasil dihapus.");
-      setData(data.filter((item) => item.id !== id));
-      fetchData();
-    } catch (error) {
-      console.error(error);
-      toast.error("Gagal menghapus data.");
-    } finally {
-      setIsLoading(false);
-    }
+  const handleDelete = (id) => {
+    // Menampilkan toast dengan tombol aksi
+    toast("konfirmasi", {
+      richColors: true,
+      position: "bottom-center",
+      description: "Data yang dihapus tidak dapat dipulihkan.",
+      action: {
+        label: "Hapus",
+        onClick: async () => {
+          setIsLoading(true);
+          try {
+            await deleteForm(id);
+            toast.success("Data berhasil dihapus.");
+            setData((prev) => prev.filter((item) => item.id !== id));
+            fetchData();
+          } catch (error) {
+            console.error(error);
+            toast.error("Gagal menghapus data.");
+          } finally {
+            setIsLoading(false);
+          }
+        },
+      },
+      cancel: {
+        label: "Batal",
+        onClick: () => toast.dismiss(),
+      },
+    });
   };
-
   const formatWA = (phone) => {
     if (!phone) return "#";
     let cleaned = phone.replace(/\D/g, "");
@@ -245,6 +250,71 @@ const PermohonanKeberatan = () => {
     return `https://wa.me/${cleaned}`;
   };
 
+  const handleSubmitSelesai = async () => {
+    if (!adminNote || !uploadFile) {
+      return toast.error("Catatan dan File Bukti wajib diisi!");
+    }
+
+    setIsSubmitting(true);
+    const loadingToast = toast.loading("Mengunggah bukti ke Google Drive...");
+
+    const reader = new FileReader();
+    reader.readAsDataURL(uploadFile);
+
+    reader.onload = async () => {
+      const base64File = reader.result;
+
+      try {
+        // 1. Kirim ke Google Apps Script
+        const driveResp = await fetch(
+          "https://script.google.com/macros/s/AKfycby9fovQ5wQl5bzNQucxSGRaZ12yVzdrazGPGN5qL3MZyhfjKceD5wXGsRsp_WwUBuqL/exec",
+          {
+            method: "POST",
+            body: JSON.stringify({
+              file: base64File,
+              fileName: uploadFile.name,
+              ticketNumber: selectedItem.ticketNumber,
+            }),
+          },
+        );
+
+        const driveResult = await driveResp.json();
+        if (driveResult.status !== "success")
+          throw new Error(driveResult.message);
+
+        toast.loading("Drive Berhasil! Menyimpan ke Database...", {
+          id: loadingToast,
+        });
+
+        // 2. Kirim ke Backend Database Utama
+        await updateStatus(
+          selectedItem.id,
+          {
+            status: "SELESAI",
+            dokumenUrl: driveResult.fileUrl,
+            dokumenName: driveResult.fileName,
+          },
+          adminNote,
+          true,
+          user.id,
+          user.name,
+        );
+
+        toast.success("Permohonan berhasil diselesaikan!", {
+          id: loadingToast,
+        });
+        setIsModalOpen(false);
+        fetchData(pagination.currentPage); // Refresh data
+      } catch (error) {
+        console.error(error);
+        toast.error("Gagal menyelesaikan: " + error.message, {
+          id: loadingToast,
+        });
+      } finally {
+        setIsSubmitting(false);
+      }
+    };
+  };
   return (
     <>
       <div className=" ">
@@ -319,7 +389,7 @@ const PermohonanKeberatan = () => {
               </select>
             </div>
 
-            <div className="flex flex-col gap-1.5 flex-1 min-w-[200px]">
+            <div className="flex flex-col gap-1.5 flex-1 min-w-[200px] ">
               <label className="text-[10px] font-black uppercase tracking-widest text-red-100">
                 Tanggal
               </label>
@@ -351,7 +421,8 @@ const PermohonanKeberatan = () => {
                   <th className="p-5 text-center">Detail Pemohon</th>
 
                   <th className="p-5 text-center">Permintaan Informasi</th>
-                  <th className="p-5 text-center uppercase">Berkas</th>
+                  <th className="p-5 text-center uppercase">Berkas Lampiran</th>
+                  <th className="p-5 text-center uppercase">Bukti Terima</th>
                   <th className="p-5 text-center">Update Status</th>
                   <th className="p-5 text-center">Tindakan</th>
                 </tr>
@@ -459,31 +530,65 @@ const PermohonanKeberatan = () => {
                             </div>
                           </td>
 
-                          {/* Lampiran */}
                           <td className="p-5 align-top text-center">
                             {item.dokumenUrl ? (
                               <a
                                 href={`${baseUrl}/form/file/download?id=${item.ticketNumber}`}
                                 target="_self"
-                                className="flex flex-col items-center gap-2 group"
+                                className="group flex flex-col items-center gap-1"
                               >
                                 <div className="p-3 bg-red-600 text-white rounded-xl shadow-lg group-hover:bg-red-700 transition-all group-active:scale-90">
-                                  <FaFileDownload size={16} />
+                                  <FaFileDownload size={14} />
                                 </div>
-                                <span className="text-[9px] font-black text-red-600 mt-1">
-                                  UNDUH
+                                <span className="text-[9px] font-black text-red-600 uppercase">
+                                  Unduh
                                 </span>
                               </a>
                             ) : (
-                              <div className="flex flex-col items-center opacity-20">
-                                <FaFileDownload size={16} />
-                                <span className="text-[9px] font-black mt-1 uppercase">
-                                  Tidak ada lampiran
-                                </span>
-                              </div>
+                              <span className="text-[9px] font-bold text-gray-300 italic uppercase">
+                                Tidak Ada
+                              </span>
                             )}
                           </td>
 
+                          {/* Kolom Bukti Tanda Terima Admin */}
+                          <td className="p-5 align-top text-center">
+                            <div className="flex flex-col items-center gap-2">
+                              {item.buktiTerima ? (
+                                <a
+                                  href={item.buktiTerima}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="group flex flex-col items-center gap-1"
+                                >
+                                  <div className="p-3 bg-blue-600 text-white rounded-xl shadow-lg group-hover:bg-blue-700 transition-all">
+                                    <FaFileDownload size={14} />
+                                  </div>
+                                  <span className="text-[9px] font-black text-blue-600 uppercase">
+                                    Lihat Bukti
+                                  </span>
+                                </a>
+                              ) : (
+                                <span className="text-[9px] font-bold text-gray-300 italic uppercase">
+                                  Belum Upload
+                                </span>
+                              )}
+
+                              {/* Tombol Edit Bukti (Hanya muncul jika status sudah SELESAI) */}
+                              {item.status === "SELESAI" && (
+                                <button
+                                  onClick={() => {
+                                    setSelectedItem(item);
+                                    setAdminNote(item.catatanAdmin || "");
+                                    setIsModalOpen(true);
+                                  }}
+                                  className="text-[8px] font-black bg-blue-50 text-blue-600 px-2 py-1 rounded border border-blue-200 hover:bg-blue-600 hover:text-white transition-all"
+                                >
+                                  EDIT
+                                </button>
+                              )}
+                            </div>
+                          </td>
                           {/* Status Update (Select) */}
                           <td className="p-5 align-top">
                             <div className="flex flex-col gap-3">
@@ -596,7 +701,7 @@ const PermohonanKeberatan = () => {
             </table>
 
             {searchTerm === "" && (
-              <div className="flex items-center justify-between p-6 bg-white border-t border-gray-100">
+              <div className="flex lg:px-24 lg:pb-0 pb-20  items-center justify-between p-6 bg-white border-t border-gray-100">
                 <div className="flex flex-col">
                   <p className="text-xs text-gray-500 font-bold uppercase">
                     Halaman {pagination.currentPage} dari{" "}
@@ -612,7 +717,7 @@ const PermohonanKeberatan = () => {
                     onClick={() => fetchData(pagination.currentPage - 1)}
                     className="px-4 py-2 text-xs font-bold bg-gray-100 rounded-lg hover:bg-red-600 hover:text-white disabled:opacity-50 transition-all"
                   >
-                    SEBELUMNYA
+                    <CircleArrowLeft size={16} />
                   </button>
                   <button
                     disabled={
@@ -622,7 +727,7 @@ const PermohonanKeberatan = () => {
                     onClick={() => fetchData(pagination.currentPage + 1)}
                     className="px-4 py-2 text-xs font-bold bg-gray-100 rounded-lg hover:bg-red-600 hover:text-white disabled:opacity-50 transition-all"
                   >
-                    SELANJUTNYA
+                    <CircleArrowRight size={16} />
                   </button>
                 </div>
               </div>
@@ -658,6 +763,61 @@ const PermohonanKeberatan = () => {
           )}
         </div>
       </div>
+
+      {isModalOpen && (
+        <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden transition-all animate-in zoom-in duration-200">
+            <div className="bg-red-600 p-5 text-white">
+              <h3 className="font-black uppercase tracking-tight text-lg">
+                Penyelesaian Berkas
+              </h3>
+              <p className="text-xs opacity-80 uppercase font-bold tracking-widest mt-1">
+                Tiket: {selectedItem?.ticketNumber}
+              </p>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-[10px] font-black uppercase text-gray-400 mb-1">
+                  Catatan Tindak Lanjut
+                </label>
+                <textarea
+                  className="w-full border-2 border-gray-100 rounded-xl p-3 text-sm focus:border-red-500 outline-none"
+                  rows="3"
+                  placeholder="Contoh: Dokumen telah diserahkan via WhatsApp..."
+                  value={adminNote}
+                  onChange={(e) => setAdminNote(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-black uppercase text-gray-400 mb-1">
+                  Upload Bukti (PDF/JPG)
+                </label>
+                <input
+                  type="file"
+                  onChange={(e) => setUploadFile(e.target.files[0])}
+                  className="w-full text-xs border-2 border-dashed border-gray-100 p-3 rounded-xl cursor-pointer"
+                />
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={() => setIsModalOpen(false)}
+                  disabled={isSubmitting}
+                  className="flex-1 py-3 text-xs font-black text-gray-400 hover:bg-gray-50 rounded-xl transition-all"
+                >
+                  BATAL
+                </button>
+                <button
+                  onClick={handleSubmitSelesai}
+                  disabled={isSubmitting || !adminNote || !uploadFile}
+                  className={` flex-1 py-3 text-xs font-black rounded-xl shadow-lg transition-all ${isSubmitting || !adminNote || !uploadFile ? "bg-gray-400 " : "bg-red-600 text-white hover:bg-red-700 shadow-red-100 active:scale-95"}`}
+                >
+                  {isSubmitting ? "MENGUNGGAH..." : "SIMPAN & SELESAI"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 };

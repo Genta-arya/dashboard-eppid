@@ -1,13 +1,13 @@
 import { apiPPID } from "../AxiosInstance";
 
-export const getAllForm = async (type, status, date, page = 1) => {
+export const getAllForm = async (type, status, date, page = 1 , limit) => {
   try {
     // Jika status atau date kosong/null/undefined, otomatis kirim "all"
     const finalStatus = status || "all";
     const finalDate = date || "all";
 
     const response = await apiPPID.get(
-      `/form/all?type=${type}&status=${finalStatus}&date=${finalDate}&page=${page}&limit=2`,
+      `/form/all?type=${type}&status=${finalStatus}&date=${finalDate}&page=${page}&limit=${limit}`,
     );
 
     return response.data;
