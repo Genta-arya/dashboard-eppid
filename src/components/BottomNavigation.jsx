@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { Home } from "lucide-react";
 import { Menu } from "lucide-react";
+import { FaArrowRight } from "react-icons/fa";
 
 const BottomNavigation = () => {
   const navigate = useNavigate();
@@ -72,9 +73,13 @@ const BottomNavigation = () => {
           <div>
             <button
               onClick={() => setOpenPengaduan(!openPengaduan)}
-              className="font-semibold text-[#8F0D0D]"
+              className="font-semibold w-full text-[#8F0D0D]"
             >
-              Pengaduan
+              <div className="flex justify-between  items-center gap-2">
+                <span>Pengaduan</span>
+                <span className="mr-2"><FaArrowRight /></span>
+              </div>
+         
             </button>
 
             {openPengaduan && (

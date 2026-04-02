@@ -158,7 +158,7 @@ const Navbar = () => {
           />
           <div>
             <h1 className="text-lg font-bold text-red-600 leading-tight">
-              Dashboard Admin
+              Dashboard
             </h1>
             <p className="text-xs md:text-sm font-bold uppercase text-gray-700 italic">
               e-PPID | KPU Sekadau
@@ -183,7 +183,7 @@ const Navbar = () => {
 
             {/* Modal Notifikasi */}
             {showModal && (
-              <div className="absolute right-0 mt-3 w-80 md:w-96 bg-white border rounded-lg shadow-2xl overflow-hidden z-[60]">
+              <div className="absolute lg:right-0 right-[-50px] mt-3 w-80 md:w-96 bg-white border rounded-lg shadow-2xl overflow-hidden z-[60]">
                 <div className="p-4 border-b bg-gray-50 flex justify-between items-center">
                   <h3 className="font-bold text-gray-700 text-sm">
                     Notifikasi

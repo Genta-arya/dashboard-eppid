@@ -1,22 +1,27 @@
 import React, { useEffect, useState } from "react";
+// Import useLocation dari react-router-dom
+import { Outlet, useLocation } from "react-router-dom"; 
 import Container from "./components/container";
 import { SidebarProvider } from "./components/ui/sidebar";
 import SidebarMenus from "./components/SidebarMenu";
 import Navbar from "./components/Navbar";
-import { Outlet } from "react-router-dom";
 import { Toaster } from "sonner";
 import useSession from "./hooks/use-session";
 import Loading from "./components/Loading";
 import { CircleFadingArrowUp } from "lucide-react";
-import Headers from "./components/Headers";
-import Dashboard from "./Views/Dashboard/Dashboard";
 import BottomNavigation from "./components/BottomNavigation";
 
 const Layout = () => {
   const { loading, user } = useSession();
   const [showScrollTop, setShowScrollTop] = useState(false);
+  
+  // Ambil informasi lokasi path saat ini
+  const location = useLocation();
 
-  // Pantau posisi scroll
+  // Logika untuk mengecek apakah Navbar harus disembunyikan
+  // Navbar akan sembunyi jika path tepat di "/"
+  const hideNavbar = location.pathname === "/";
+
   useEffect(() => {
     const handleScroll = () => {
       if (window.scrollY > 200) {
@@ -30,7 +35,6 @@ const Layout = () => {
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
-  // Fungsi scroll ke atas
   const scrollToTop = () => {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -40,15 +44,17 @@ const Layout = () => {
 
   return (
     <SidebarProvider>
+      {/* --- Tampilan Desktop (MD ke atas) --- */}
       <div className="w-full gap-4 hidden md:flex">
         <SidebarMenus />
         <div className="flex-1 relative">
-          <Navbar />
+          {/* Kondisi: Hanya tampil jika bukan di path "/" */}
+          {!hideNavbar && <Navbar />}
+          
           <Container>
             <Outlet />
           </Container>
 
-          {/* Tombol Scroll to Top */}
           {showScrollTop && (
             <button
               onClick={scrollToTop}
@@ -61,13 +67,17 @@ const Layout = () => {
         </div>
       </div>
 
+      {/* --- Tampilan Mobile (MD ke bawah) --- */}
       <div className="md:hidden lg:hidden block w-full">
-        <Navbar />
+        {/* Kondisi: Hanya tampil jika bukan di path "/" */}
+        {!hideNavbar && <Navbar />}
 
-          {/* <Dashboard /> */}
         <Container>
           <Outlet />
         </Container>
+        
+        {/* BottomNavigation biasanya juga ikut disembunyikan jika path "/" 
+            Jika ingin sembunyi juga, gunakan: {!hideNavbar && <BottomNavigation />} */}
         <BottomNavigation />
       </div>
     </SidebarProvider>

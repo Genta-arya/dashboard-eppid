@@ -337,7 +337,7 @@ const PermohonanInformasi = () => {
       const ws = XLSX.utils.json_to_sheet(formattedData);
       const wb = { Sheets: { Data: ws }, SheetNames: ["Data"] };
       XLSX.writeFile(wb, `Laporan_PPID_${new Date().getTime()}.xlsx`);
-      toast.success("Excel diunduh", { id: loadingToast });
+      toast.success("Laporan Excel berhasil diunduh", { id: loadingToast });
     } catch (e) { toast.error("Gagal export Excel", { id: loadingToast }); }
   };
 
@@ -430,7 +430,7 @@ const PermohonanInformasi = () => {
     });
 
     doc.save(`Laporan_PPID_Lengkap_${new Date().getTime()}.pdf`);
-    toast.success("PDF Full Width Berhasil!", { id: loadingToast });
+    toast.success("Laporan PDF berhasil diunduh", { id: loadingToast });
   } catch (e) {
     console.error(e);
     toast.error("Gagal cetak PDF", { id: loadingToast });
@@ -844,7 +844,7 @@ const PermohonanInformasi = () => {
               </tbody>
             </table>
 
-            {searchTerm === "" && (
+            {searchTerm === ""  && data.length > 0 && (
               <div className="flex lg:px-24 lg:pb-0 pb-20  items-center justify-between p-6 bg-white border-t border-gray-100">
                 <div className="flex flex-col">
                   <p className="text-xs text-gray-500 font-bold uppercase">

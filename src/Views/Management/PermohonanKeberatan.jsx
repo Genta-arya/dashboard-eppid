@@ -10,6 +10,8 @@ import {
   FaStickyNote,
   FaPaperPlane,
   FaHistory,
+  FaFileExcel,
+  FaFilePdf,
 } from "react-icons/fa";
 import { toast } from "sonner";
 import Navigation from "@/components/Navigation";
@@ -22,6 +24,9 @@ import {
 import { CircleArrowLeft, CircleArrowRight } from "lucide-react";
 import { baseUrl } from "@/Services/AxiosInstance";
 import useSession from "@/hooks/use-session";
+import * as XLSX from "xlsx";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 
 const mapEnum = {
   JenisPemohon: {
@@ -78,11 +83,11 @@ const PermohonanKeberatan = () => {
     setIsLoading(true);
     try {
       const response = await getAllForm(
-       "KEBERATAN",
+        "KEBERATAN",
         statusFilter,
         dateFilter,
         page,
-        10
+        10,
       );
       window.scrollTo({ top: 0, behavior: "smooth" });
       setData(response.data.data || []); // Ambil data dari properti data
@@ -315,6 +320,176 @@ const PermohonanKeberatan = () => {
       }
     };
   };
+
+  const exportToExcel = async () => {
+    const loadingToast = toast.loading("Menyiapkan data Excel...");
+    try {
+      const response = await getAllForm(
+        "KEBERATAN",
+        statusFilter,
+        dateFilter,
+        1,
+        "all",
+      );
+      const allData = response.data.data || [];
+      const formattedData = allData.map((item) => ({
+        "Nomor Tiket": item.ticketNumber,
+        Tanggal: new Date(item.createdAt).toLocaleDateString("id-ID"),
+        Pemohon: item.nama,
+        Status: mapEnum.StatusTicket[item.status]?.label || item.status,
+        Informasi: item.rincianInformasi,
+        Catatan: item.catatanAdmin || "-",
+      }));
+      const ws = XLSX.utils.json_to_sheet(formattedData);
+      const wb = { Sheets: { Data: ws }, SheetNames: ["Data"] };
+      XLSX.writeFile(wb, `Laporan_PPID_${new Date().getTime()}.xlsx`);
+      toast.success("Laporan Excel berhasil diunduh", { id: loadingToast });
+    } catch (e) {
+      toast.error("Gagal export Excel", { id: loadingToast });
+    }
+  };
+
+  const exportToPDF = async () => {
+    const loadingToast = toast.loading("Menyiapkan PDF Full Width...");
+    try {
+      const response = await getAllForm(
+        "KEBERATAN",
+        statusFilter,
+        dateFilter,
+        1,
+        "all",
+      );
+      const allData = response.data.data || [];
+      const doc = new jsPDF("l", "mm", "a4");
+      const pageWidth = doc.internal.pageSize.getWidth();
+
+      // Judul Center
+      doc.setFontSize(18);
+      doc.setTextColor(144, 13, 13);
+      doc.text("LAPORAN PERMOHONAN KEBERATAN PPID", pageWidth / 2, 20, {
+        align: "center",
+      });
+      doc.setFontSize(10);
+      doc.setTextColor(100);
+      doc.text(
+        `Dicetak pada: ${new Date().toLocaleString("id-ID")}`,
+        pageWidth / 2,
+        28,
+        { align: "center" },
+      );
+
+      // Header dengan Kolom NO
+      const tableColumn = [
+        "No.",
+        "No. Tiket",
+        "Pemohon",
+        "Rincian Informasi",
+        "Status",
+        "Tanggal",
+        "Lamp.",
+        "Bukti",
+        "Catatan",
+      ];
+
+      // Mapping Row dengan Index (i + 1)
+      const tableRows = allData.map((item, i) => [
+        i + 1, // Kolom Nomor
+        item.ticketNumber,
+        item.nama,
+        item.rincianInformasi || "-",
+        mapEnum.StatusTicket[item.status]?.label || "Belum",
+        new Date(item.createdAt).toLocaleDateString("id-ID"),
+        item.dokumenUrl ? "UNDUH" : "-",
+        item.buktiTerima ? "LIHAT" : "-",
+        item.catatanAdmin || "-",
+      ]);
+
+      autoTable(doc, {
+        head: [tableColumn],
+        body: tableRows,
+        startY: 35,
+        theme: "grid",
+
+        // AGAR FULL WIDTH:
+        tableWidth: "auto", // Ini akan membuat tabel memenuhi lebar halaman (dikurangi margin)
+        margin: { left: 10, right: 10 }, // Margin tipis kiri kanan agar maksimal
+
+        styles: {
+          fontSize: 7,
+          cellPadding: 2,
+          overflow: "linebreak",
+          valign: "middle",
+        },
+        headStyles: {
+          fillColor: [144, 13, 13],
+          halign: "center",
+          fontSize: 8,
+        },
+        // Penyesuaian persentase lebar (agar kolom rincian tetap yang paling luas)
+        columnStyles: {
+          0: { cellWidth: 10, halign: "center" }, // No
+          1: { cellWidth: 35, halign: "center" }, // No Tiket
+          2: { cellWidth: 35 }, // Pemohon
+          3: { cellWidth: "auto" }, // Rincian (Otomatis sisanya)
+          4: { cellWidth: 20, halign: "center" }, // Status
+          5: { cellWidth: 22, halign: "center" }, // Tanggal
+          6: { cellWidth: 15, halign: "center" }, // Lamp
+          7: { cellWidth: 15, halign: "center" }, // Bukti
+          8: { cellWidth: 40 }, // Catatan
+        },
+        didParseCell: (dataCell) => {
+          if (dataCell.section === "body") {
+            const s = allData[dataCell.row.index]?.status;
+            if (s === "SELESAI")
+              dataCell.cell.styles.fillColor = [220, 252, 231];
+            else if (s === "DITOLAK")
+              dataCell.cell.styles.fillColor = [254, 226, 226];
+            else if (s === "DIPROSES")
+              dataCell.cell.styles.fillColor = [254, 249, 195];
+            else dataCell.cell.styles.fillColor = [243, 244, 246];
+          }
+        },
+        didDrawCell: (dataCell) => {
+          if (dataCell.section === "body") {
+            const item = allData[dataCell.row.index];
+            // Update index karena ada penambahan kolom No (Lampiran jadi index 6, Bukti jadi 7)
+            if (
+              (dataCell.column.index === 6 && item.dokumenUrl) ||
+              (dataCell.column.index === 7 && item.buktiTerima)
+            ) {
+              doc.setTextColor(0, 0, 255);
+              doc.link(
+                dataCell.cell.x,
+                dataCell.cell.y,
+                dataCell.cell.width,
+                dataCell.cell.height,
+                {
+                  url:
+                    dataCell.column.index === 6
+                      ? `${baseUrl}/form/file/download?id=${item.ticketNumber}`
+                      : item.buktiTerima,
+                },
+              );
+            }
+          }
+        },
+      });
+
+      doc.save(`Laporan_PPID_Lengkap_${new Date().getTime()}.pdf`);
+      toast.success("Laporan PDF berhasil diunduh", { id: loadingToast });
+    } catch (e) {
+      console.error(e);
+      toast.error("Gagal cetak PDF", { id: loadingToast });
+    }
+  };
+
+  const getRowBg = (status) => {
+    if (status === "SELESAI") return "bg-green-100 hover:bg-green-200";
+    if (status === "DITOLAK") return "bg-red-100 hover:bg-red-200";
+    if (status === "DIPROSES") return "bg-yellow-100 hover:bg-yellow-200";
+    return "bg-gray-100 hover:bg-gray-200";
+  };
+
   return (
     <>
       <div className=" ">
@@ -326,11 +501,26 @@ const PermohonanKeberatan = () => {
           <div className="bg-gradient-to-r from-red-600 to-red-700 p-8 text-white flex flex-col lg:flex-row lg:items-center justify-between gap-6">
             <div>
               <h2 className="text-3xl font-black uppercase tracking-tighter">
-                Pengajuan Keberatan
+                Permohonan Informasi
               </h2>
               <div className="flex items-center gap-2 text-red-100 text-sm mt-1 font-medium italic opacity-90">
                 <FaHistory />
                 <span>Monitoring & Manajemen Berkas PPID</span>
+              </div>
+              <div className="flex items-center gap-4 mt-4">
+                {/* TOMBOL EXPORT BARU */}
+                <button
+                  onClick={exportToExcel}
+                  className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-xs font-bold transition-all shadow-lg"
+                >
+                  <FaFileExcel size={14} /> EXCEL
+                </button>
+                <button
+                  onClick={exportToPDF}
+                  className="flex items-center gap-2 bg-white hover:bg-gray-100 text-red-700 px-4 py-2 rounded-lg text-xs font-bold transition-all shadow-lg"
+                >
+                  <FaFilePdf size={14} /> PDF
+                </button>
               </div>
             </div>
 
@@ -700,7 +890,7 @@ const PermohonanKeberatan = () => {
               </tbody>
             </table>
 
-            {searchTerm === "" && (
+            {searchTerm === ""  && data.length > 0 && (
               <div className="flex lg:px-24 lg:pb-0 pb-20  items-center justify-between p-6 bg-white border-t border-gray-100">
                 <div className="flex flex-col">
                   <p className="text-xs text-gray-500 font-bold uppercase">

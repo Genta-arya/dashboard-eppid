@@ -15,6 +15,7 @@ const menus = [
   { label: "Dashboard", icon: <Home />, href: "/" },
   
   { label: "Management Pengaduan", icon: <Archive />, href: "/pengaduan" },
+  { label: "Log", icon: <File />, href: "/log" },
   { label: "Setting", icon: <Settings />, href: "/setting" },
 ];
 const SidebarMenus = () => {

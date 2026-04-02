@@ -13,6 +13,8 @@ import { Toaster } from "sonner";
 import Setting from "./Views/Setting/Setting";
 import PermohonanInformasi from "./Views/Management/PermohonanInformasi";
 import PermohonanKeberatan from "./Views/Management/PermohonanKeberatan";
+import SettingNotifAdmin from "./Views/Setting/SettingNotifAdmin";
+import Loglayout from "./Views/LogHistory/Loglayout";
 
 const RouteApp = () => {
   return (
@@ -32,7 +34,9 @@ const RouteApp = () => {
             element={<PermohonanKeberatan />}
           />
 
-          <Route path="/setting" element={<Setting />} />
+          <Route path="/setting/notifikasi" element={<SettingNotifAdmin />} />
+           <Route path="/setting" element={<Setting />} />
+           <Route path="/log" element={<Loglayout />} />
         </Route>
         <Route path="*" element={<HalamanNotFound />} />
       </Routes>
