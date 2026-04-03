@@ -1,6 +1,6 @@
 import useUserStore from "@/lib/AuthZustand";
 import { responseHandler } from "@/lib/utils";
-import { ServiceSession, ServiceSessions } from "@/Services/Auth/Auth.services";
+import { ServiceSession, ServiceSessions } from "@/Services/API/Auth.services";
 import React, { useEffect, useState } from "react";
 import { toast } from "sonner";
 
