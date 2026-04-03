@@ -435,7 +435,7 @@ const Dashboard = () => {
                             >
                               Tipe Layanan
                             </p>
-                            <span className="text-xs font-bold text-slate-700 truncate block">
+                            <span className="text-xs font-bold text-slate-700  block">
                               {formatLabel(item.layanan)}
                             </span>
                           </div>
