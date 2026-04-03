@@ -68,18 +68,19 @@ const BottomNavigation = () => {
         </div>
 
         {/* Menu List */}
-        <div className="p-4 space-y-4">
+        <div className="p-4 space-y-4 flex flex-col items-start w-full">
           {/* Pengaduan */}
-          <div>
+          <div className="w-full">
             <button
               onClick={() => setOpenPengaduan(!openPengaduan)}
               className="font-semibold w-full text-[#8F0D0D]"
             >
-              <div className="flex justify-between  items-center gap-2">
-                <span>Pengaduan</span>
-                <span className="mr-2"><FaArrowRight /></span>
+              <div className="flex justify-between w-full  items-center gap-2">
+                <span>Management Pengaduan</span>
+                <span className="mr-2">
+                  <FaArrowRight />
+                </span>
               </div>
-         
             </button>
 
             {openPengaduan && (
@@ -108,6 +109,16 @@ const BottomNavigation = () => {
           </div>
 
           {/* Setting */}
+          <button
+            onClick={() => {
+              navigate("/log");
+              setOpenMenu(false);
+              setOpenPengaduan(false);
+            }}
+            className="font-semibold text-[#8F0D0D]"
+          >
+            Log Aktivitas
+          </button>
           <button
             onClick={() => {
               navigate("/setting/notifikasi");

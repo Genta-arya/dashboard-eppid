@@ -118,8 +118,8 @@ const Headers = ({ user }) => {
   };
 
   return (
-    <header className="sticky top-0 z-[50] w-full px-4 pt-4 bg-white">
-      <div className="mx-auto max-w-7xl">
+    <header className="sticky top-0 z-[50] w-full px-2 pt-4 bg-white">
+      <div className="">
         <div className="flex items-center justify-between bg-white/80 backdrop-blur-md border border-slate-200 shadow-sm rounded-[1.5rem] px-6 py-3">
           
           {/* Logo Section */}
@@ -127,7 +127,7 @@ const Headers = ({ user }) => {
             <div className="bg-red-600 p-2 rounded-xl shadow-lg shadow-red-200">
               <LayoutDashboard className="text-white w-5 h-5" />
             </div>
-            <div className="hidden sm:block">
+            <div className=" sm:block">
               <h2 className="text-sm font-black text-slate-800 uppercase tracking-widest leading-none">E-PPID</h2>
               <p className="text-[10px] font-bold text-slate-400 mt-1 uppercase">KPU KAB. SEKADAU</p>
             </div>
@@ -151,7 +151,7 @@ const Headers = ({ user }) => {
               </button>
 
               {showNotif && (
-                <div className="absolute right-0 mt-4 w-80 md:w-96 bg-white border border-slate-200 shadow-2xl rounded-[1.5rem] overflow-hidden animate-in fade-in slide-in-from-top-2">
+                <div className="absolute lg:right-0 right-[-100px]  mt-4 w-80 md:w-96 bg-white border border-slate-200 shadow-2xl rounded-[1.5rem] overflow-hidden animate-in fade-in slide-in-from-top-2">
                   <div className="p-4 border-b bg-slate-50/50 flex justify-between items-center">
                     <h3 className="font-black text-slate-700 text-xs uppercase tracking-widest">Notifikasi</h3>
                     <button onClick={() => setShowNotif(false)} className="text-slate-400 hover:text-black"><X size={18} /></button>

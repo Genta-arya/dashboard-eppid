@@ -79,6 +79,11 @@ const PermohonanInformasi = () => {
   const [uploadFile, setUploadFile] = useState(null);
   const [adminNote, setAdminNote] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isYearModalOpen, setIsYearModalOpen] = useState(false);
+  const [selectedYear, setSelectedYear] = useState(
+    new Date().getFullYear().toString(),
+  );
+  const [exportType, setExportType] = useState(null);
   const fetchData = async (page = 1) => {
     setIsLoading(true);
     try {
@@ -321,11 +326,36 @@ const PermohonanInformasi = () => {
     };
   };
 
- const exportToExcel = async () => {
-    const loadingToast = toast.loading("Menyiapkan data Excel...");
+  // --- FUNGSI EXPORT DENGAN PARAMETER YEAR ---
+  const handleExport = (type) => {
+    setExportType(type);
+    setIsYearModalOpen(true);
+  };
+
+  const processExport = async () => {
+    if (exportType === "excel") await exportToExcel(selectedYear);
+    else if (exportType === "pdf") await exportToPDF(selectedYear);
+    setIsYearModalOpen(false);
+  };
+
+  const exportToExcel = async (year) => {
+    const loadingToast = toast.loading(
+      `Menyiapkan data Excel Tahun ${year}...`,
+    );
     try {
-      const response = await getAllForm("PERMINTAAN_INFORMASI", statusFilter, dateFilter, 1, "all");
+      const response = await getAllForm(
+        "PERMINTAAN_INFORMASI",
+        statusFilter,
+        "all",
+        1,
+        "all",
+        year,
+      );
       const allData = response.data.data || [];
+      if (allData.length === 0) {
+        toast.error(`Tidak ada data untuk tahun ${year}`, { id: loadingToast });
+        return;
+      }
       const formattedData = allData.map((item) => ({
         "Nomor Tiket": item.ticketNumber,
         Tanggal: new Date(item.createdAt).toLocaleDateString("id-ID"),
@@ -336,114 +366,106 @@ const PermohonanInformasi = () => {
       }));
       const ws = XLSX.utils.json_to_sheet(formattedData);
       const wb = { Sheets: { Data: ws }, SheetNames: ["Data"] };
-      XLSX.writeFile(wb, `Laporan_PPID_${new Date().getTime()}.xlsx`);
+      XLSX.writeFile(wb, `Laporan_PPID_${year}_${new Date().getTime()}.xlsx`);
       toast.success("Laporan Excel berhasil diunduh", { id: loadingToast });
-    } catch (e) { toast.error("Gagal export Excel", { id: loadingToast }); }
+    } catch (e) {
+      toast.error("Gagal export Excel", { id: loadingToast });
+    }
   };
 
- const exportToPDF = async () => {
-  const loadingToast = toast.loading("Menyiapkan PDF Full Width...");
-  try {
-    const response = await getAllForm("PERMINTAAN_INFORMASI", statusFilter, dateFilter, 1, "all");
-    const allData = response.data.data || [];
-    const doc = new jsPDF("l", "mm", "a4");
-    const pageWidth = doc.internal.pageSize.getWidth();
-
-    // Judul Center
-    doc.setFontSize(18);
-    doc.setTextColor(144, 13, 13);
-    doc.text("LAPORAN PERMOHONAN INFORMASI PPID", pageWidth / 2, 20, { align: "center" });
-    doc.setFontSize(10);
-    doc.setTextColor(100);
-    doc.text(`Dicetak pada: ${new Date().toLocaleString("id-ID")}`, pageWidth / 2, 28, { align: "center" });
-
-    // Header dengan Kolom NO
-    const tableColumn = ["No.", "No. Tiket", "Pemohon", "Rincian Informasi", "Status", "Tanggal", "Lamp.", "Bukti", "Catatan"];
-
-    // Mapping Row dengan Index (i + 1)
-    const tableRows = allData.map((item, i) => [
-      i + 1, // Kolom Nomor
-      item.ticketNumber,
-      item.nama,
-      item.rincianInformasi || "-",
-      mapEnum.StatusTicket[item.status]?.label || "Belum",
-      new Date(item.createdAt).toLocaleDateString("id-ID"),
-      item.dokumenUrl ? "UNDUH" : "-",
-      item.buktiTerima ? "LIHAT" : "-",
-      item.catatanAdmin || "-",
-    ]);
-
-    autoTable(doc, {
-      head: [tableColumn],
-      body: tableRows,
-      startY: 35,
-      theme: "grid",
-      
-      // AGAR FULL WIDTH:
-      tableWidth: 'auto', // Ini akan membuat tabel memenuhi lebar halaman (dikurangi margin)
-      margin: { left: 10, right: 10 }, // Margin tipis kiri kanan agar maksimal
-      
-      styles: { 
-        fontSize: 7, 
-        cellPadding: 2, 
-        overflow: 'linebreak',
-        valign: 'middle' 
-      },
-      headStyles: { 
-        fillColor: [144, 13, 13], 
-        halign: "center",
-        fontSize: 8
-      },
-      // Penyesuaian persentase lebar (agar kolom rincian tetap yang paling luas)
-      columnStyles: {
-        0: { cellWidth: 10, halign: 'center' }, // No
-        1: { cellWidth: 35, halign: 'center' }, // No Tiket
-        2: { cellWidth: 35 },                   // Pemohon
-        3: { cellWidth: 'auto' },               // Rincian (Otomatis sisanya)
-        4: { cellWidth: 20, halign: 'center' }, // Status
-        5: { cellWidth: 22, halign: 'center' }, // Tanggal
-        6: { cellWidth: 15, halign: 'center' }, // Lamp
-        7: { cellWidth: 15, halign: 'center' }, // Bukti
-        8: { cellWidth: 40 },                   // Catatan
-      },
-      didParseCell: (dataCell) => {
-        if (dataCell.section === 'body') {
-          const s = allData[dataCell.row.index]?.status;
-          if (s === "SELESAI") dataCell.cell.styles.fillColor = [220, 252, 231];
-          else if (s === "DITOLAK") dataCell.cell.styles.fillColor = [254, 226, 226];
-          else if (s === "DIPROSES") dataCell.cell.styles.fillColor = [254, 249, 195];
-          else dataCell.cell.styles.fillColor = [243, 244, 246];
-        }
-      },
-      didDrawCell: (dataCell) => {
-        if (dataCell.section === 'body') {
-          const item = allData[dataCell.row.index];
-          // Update index karena ada penambahan kolom No (Lampiran jadi index 6, Bukti jadi 7)
-          if ((dataCell.column.index === 6 && item.dokumenUrl) || (dataCell.column.index === 7 && item.buktiTerima)) {
-            doc.setTextColor(0, 0, 255);
-            doc.link(dataCell.cell.x, dataCell.cell.y, dataCell.cell.width, dataCell.cell.height, {
-              url: dataCell.column.index === 6 ? `${baseUrl}/form/file/download?id=${item.ticketNumber}` : item.buktiTerima
-            });
-          }
-        }
+  const exportToPDF = async (year) => {
+    const loadingToast = toast.loading(`Menyiapkan data PDF Tahun ${year}...`);
+    try {
+      const response = await getAllForm(
+        "PERMINTAAN_INFORMASI",
+        statusFilter,
+        "all",
+        1,
+        "all",
+        year,
+      );
+      const allData = response.data.data || [];
+      if (allData.length === 0) {
+        toast.error(`Tidak ada data untuk tahun ${year}`, { id: loadingToast });
+        return;
       }
-    });
+      const doc = new jsPDF("l", "mm", "a4");
+      const pageWidth = doc.internal.pageSize.getWidth();
 
-    doc.save(`Laporan_PPID_Lengkap_${new Date().getTime()}.pdf`);
-    toast.success("Laporan PDF berhasil diunduh", { id: loadingToast });
-  } catch (e) {
-    console.error(e);
-    toast.error("Gagal cetak PDF", { id: loadingToast });
-  }
-};
+      doc.setFontSize(18);
+      doc.setTextColor(144, 13, 13);
+      doc.text("LAPORAN PERMOHONAN INFORMASI PPID", pageWidth / 2, 20, {
+        align: "center",
+      });
+      doc.setFontSize(12);
+      doc.text(
+        `Tahun Anggaran: ${year === "all" ? "Semua Tahun" : year}`,
+        pageWidth / 2,
+        28,
+        { align: "center" },
+      );
 
-  const getRowBg = (status) => {
-    if (status === "SELESAI") return "bg-green-100 hover:bg-green-200";
-    if (status === "DITOLAK") return "bg-red-100 hover:bg-red-200";
-    if (status === "DIPROSES") return "bg-yellow-100 hover:bg-yellow-200";
-    return "bg-gray-100 hover:bg-gray-200";
+      const tableColumn = [
+        "No.",
+        "No. Tiket",
+        "Pemohon",
+        "Rincian Informasi",
+        "Status",
+        "Tanggal",
+        "Lamp.",
+        "Bukti",
+        "Catatan",
+      ];
+      const tableRows = allData.map((item, i) => [
+        i + 1,
+        item.ticketNumber,
+        item.nama,
+        item.rincianInformasi || "-",
+        mapEnum.StatusTicket[item.status]?.label || "Belum",
+        new Date(item.createdAt).toLocaleDateString("id-ID"),
+        item.dokumenUrl ? "UNDUH" : "-",
+        item.buktiTerima ? "LIHAT" : "-",
+        item.catatanAdmin || "-",
+      ]);
+
+      autoTable(doc, {
+        head: [tableColumn],
+        body: tableRows,
+        startY: 35,
+        theme: "grid",
+        tableWidth: "auto",
+        margin: { left: 10, right: 10 },
+        styles: {
+          fontSize: 7,
+          cellPadding: 2,
+          overflow: "linebreak",
+          valign: "middle",
+        },
+        headStyles: { fillColor: [144, 13, 13], halign: "center", fontSize: 8 },
+        columnStyles: {
+          0: { cellWidth: 10, halign: "center" },
+          3: { cellWidth: "auto" },
+          8: { cellWidth: 40 },
+        },
+        didParseCell: (dataCell) => {
+          if (dataCell.section === "body") {
+            const s = allData[dataCell.row.index]?.status;
+            if (s === "SELESAI")
+              dataCell.cell.styles.fillColor = [220, 252, 231];
+            else if (s === "DITOLAK")
+              dataCell.cell.styles.fillColor = [254, 226, 226];
+            else if (s === "DIPROSES")
+              dataCell.cell.styles.fillColor = [254, 249, 195];
+          }
+        },
+      });
+
+      doc.save(`Laporan_PPID_${year}.pdf`);
+      toast.success("Laporan PDF berhasil diunduh", { id: loadingToast });
+    } catch (e) {
+      toast.error("Gagal cetak PDF", { id: loadingToast });
+    }
   };
-
   return (
     <>
       <div className=" ">
@@ -464,13 +486,13 @@ const PermohonanInformasi = () => {
               <div className="flex items-center gap-4 mt-4">
                 {/* TOMBOL EXPORT BARU */}
                 <button
-                  onClick={exportToExcel}
+                  onClick={() => handleExport("excel")}
                   className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-xs font-bold transition-all shadow-lg"
                 >
                   <FaFileExcel size={14} /> EXCEL
                 </button>
                 <button
-                  onClick={exportToPDF}
+                  onClick={() => handleExport("pdf")}
                   className="flex items-center gap-2 bg-white hover:bg-gray-100 text-red-700 px-4 py-2 rounded-lg text-xs font-bold transition-all shadow-lg"
                 >
                   <FaFilePdf size={14} /> PDF
@@ -844,7 +866,7 @@ const PermohonanInformasi = () => {
               </tbody>
             </table>
 
-            {searchTerm === ""  && data.length > 0 && (
+            {searchTerm === "" && data.length > 0 && (
               <div className="flex lg:px-24 lg:pb-0 pb-20  items-center justify-between p-6 bg-white border-t border-gray-100">
                 <div className="flex flex-col">
                   <p className="text-xs text-gray-500 font-bold uppercase">
@@ -956,6 +978,55 @@ const PermohonanInformasi = () => {
                   className={` flex-1 py-3 text-xs font-black rounded-xl shadow-lg transition-all ${isSubmitting || !adminNote || !uploadFile ? "bg-gray-400 " : "bg-red-600 text-white hover:bg-red-700 shadow-red-100 active:scale-95"}`}
                 >
                   {isSubmitting ? "MENGUNGGAH..." : "SIMPAN & SELESAI"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {isYearModalOpen && (
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden transition-all animate-in zoom-in duration-200">
+            <div className="bg-gray-800 p-5 text-white flex items-center gap-3">
+              {exportType === "pdf" ? (
+                <FaFilePdf className="text-red-400" />
+              ) : (
+                <FaFileExcel className="text-green-400" />
+              )}
+              <h3 className="font-black uppercase tracking-tight">
+                Export {exportType?.toUpperCase()}
+              </h3>
+            </div>
+            <div className="p-6">
+              <label className="block text-[10px] font-black uppercase text-gray-400 mb-2">
+                Pilih Tahun Data
+              </label>
+              <select
+                value={selectedYear}
+                onChange={(e) => setSelectedYear(e.target.value)}
+                className="w-full border-2 border-gray-100 rounded-xl p-3 text-sm font-bold focus:border-red-500 outline-none mb-6"
+              >
+                {["2024", "2025", "2026", "2027"].map((y) => (
+                  <option key={y} value={y}>
+                    {y}
+                  </option>
+                ))}
+              </select>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    (setIsYearModalOpen(false),
+                      setSelectedYear(new Date().getFullYear().toString()));
+                  }}
+                  className="flex-1 py-3 text-xs font-black text-gray-400"
+                >
+                  BATAL
+                </button>
+                <button
+                  onClick={processExport}
+                  className="flex-1 py-3 text-xs font-black bg-red-600 text-white rounded-xl shadow-lg"
+                >
+                  DOWNLOAD
                 </button>
               </div>
             </div>

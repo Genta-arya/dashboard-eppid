@@ -123,8 +123,8 @@ const Dashboard = () => {
                 <p className="text-slate-500 font-medium mt-1 text-sm italic">Sistem Monitoring Pelayanan • Tahun {year}</p>
               </div>
 
-              <div className="flex w-full md:w-auto items-center bg-white p-1.5 rounded-2xl shadow-sm border border-slate-200">
-                <div className="flex items-center px-4 text-slate-400 gap-2 border-r border-slate-100 font-black text-[10px] uppercase tracking-widest">
+              <div className="flex w-full md:w-auto md:justify-end  items-center bg-white p-1.5 rounded-2xl shadow-sm border border-slate-200">
+                <div className="flex items-center  px-4 text-slate-400 gap-2 border-r border-slate-100 font-black text-[10px] uppercase tracking-widest">
                   <Calendar size={16} /> Periode
                 </div>
                 <select 
@@ -308,7 +308,7 @@ const Dashboard = () => {
             </div>
 
             <div className="p-6 bg-slate-50 border-t flex justify-end">
-              <button onClick={() => setShowAiModal(false)} className="px-8 py-3 bg-slate-900 text-white rounded-2xl font-bold hover:bg-slate-800 transition-all active:scale-95 shadow-lg">Tutup Laporan</button>
+              <button onClick={() => setShowAiModal(false)} className="px-8 py-3 bg-slate-900 text-white rounded-2xl font-bold hover:bg-slate-800 transition-all active:scale-95 shadow-lg">Tutup</button>
             </div>
           </div>
         </div>
