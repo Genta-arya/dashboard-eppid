@@ -2,7 +2,7 @@ import axios from "axios";
 
 // API Presensi (Tetap seperti semula)
 export const type = "production"; // Ubah ke 'local' jika sedang dev
-export const baseUrl = `${type === "local" ? "http://localhost:8080" : "https://server-ppid.vercel.app"}`;
+export const baseUrl = `${type === "local" ? "http://localhost:8080/api" : "https://server-ppid.vercel.app/api"}`;
 
 export const apiPresensi = axios.create({
   baseURL: "https://api-presensi.kpu-sekadau.my.id/api/v1",
